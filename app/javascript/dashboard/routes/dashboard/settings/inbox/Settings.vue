@@ -209,9 +209,7 @@ export default {
       return this.isAFacebookInbox && this.inbox.reauthorization_required;
     },
     googleUnauthorized() {
-      return (
-        this.inbox.reauthorization_required
-      );
+      return this.isAGoogleInbox && this.inbox.reauthorization_required;
     },
   },
   watch: {
