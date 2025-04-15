@@ -50,11 +50,7 @@ jobs:
       - name: Set Docker Tags
         run: |
           SANITIZED_REF=$(echo "$GIT_REF" | sed 's/\//-/g')
-          if [ "${{ github.ref_name }}" = "master" ]; then
-            echo "DOCKER_TAG=${FULL_IMAGE_NAME}:latest-couchers" >> $GITHUB_ENV
-          else
-            echo "DOCKER_TAG=${FULL_IMAGE_NAME}:${SANITIZED_REF}-couchers" >> $GITHUB_ENV
-          fi
+          echo "DOCKER_TAG=${FULL_IMAGE_NAME}:${SANITIZED_REF}-couchers" >> $GITHUB_ENV
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
@@ -128,11 +124,7 @@ jobs:
           GIT_REF: ${{ github.head_ref || github.ref_name }}
         run: |
           SANITIZED_REF=$(echo "$GIT_REF" | sed 's/\//-/g')
-          if [ "${{ github.ref_name }}" = "master" ]; then
-            TAG="${FULL_IMAGE_NAME}:latest-couchers"
-          else
-            TAG="${FULL_IMAGE_NAME}:${SANITIZED_REF}-couchers"
-          fi
+          TAG="${FULL_IMAGE_NAME}:${SANITIZED_REF}-couchers"
 
           docker buildx imagetools create -t $TAG \
             $(printf '${{ env.FULL_IMAGE_NAME }}@sha256:%s ' *)
@@ -142,10 +134,6 @@ jobs:
           GIT_REF: ${{ github.head_ref || github.ref_name }}
         run: |
           SANITIZED_REF=$(echo "$GIT_REF" | sed 's/\//-/g')
-          if [ "${{ github.ref_name }}" = "master" ]; then
-            TAG="${FULL_IMAGE_NAME}:latest-couchers"
-          else
-            TAG="${FULL_IMAGE_NAME}:${SANITIZED_REF}-couchers"
-          fi
+          TAG="${FULL_IMAGE_NAME}:${SANITIZED_REF}-couchers"
 
           docker buildx imagetools inspect $TAG
