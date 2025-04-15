@@ -1,0 +1,148 @@
+name: Publish Couchers Chatwoot CE docker images
+
+on:
+  push:
+    branches:
+      - develop
+  workflow_dispatch:
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux/amd64
+            runner: ubuntu-latest
+          - platform: linux/arm64
+            runner: ubuntu-22.04-arm
+    runs-on: ${{ matrix.runner }}
+    env:
+      GIT_REF: ${{ github.head_ref || github.ref_name }}
+    steps:
+      - name: Set repository and image name to lowercase
+        run: |
+          echo "IMAGE_NAME=${IMAGE_NAME,,}" >>${GITHUB_ENV}
+          echo "FULL_IMAGE_NAME=ghcr.io/${IMAGE_NAME,,}" >>${GITHUB_ENV}
+        env:
+          IMAGE_NAME: '${{ github.repository }}'
+
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Prepare
+        run: |
+          platform=${{ matrix.platform }}
+          echo "PLATFORM_PAIR=${platform//\//-}" >> $GITHUB_ENV
+
+      - name: Strip enterprise code
+        run: |
+          rm -rf enterprise
+          rm -rf spec/enterprise
+
+      - name: Set Chatwoot edition
+        run: |
+          echo -en '\nENV CW_EDITION="ce"' >> docker/Dockerfile
+
+      - name: Set Docker Tags
+        run: |
+          SANITIZED_REF=$(echo "$GIT_REF" | sed 's/\//-/g')
+          if [ "${{ github.ref_name }}" = "master" ]; then
+            echo "DOCKER_TAG=${FULL_IMAGE_NAME}:latest-couchers" >> $GITHUB_ENV
+          else
+            echo "DOCKER_TAG=${FULL_IMAGE_NAME}:${SANITIZED_REF}-couchers" >> $GITHUB_ENV
+          fi
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to the Container registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push by digest
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/Dockerfile
+          platforms: ${{ matrix.platform }}
+          push: ${{ github.event_name == 'push' || github.event_name == 'workflow_dispatch' }}
+          outputs: type=image,name=${{ env.FULL_IMAGE_NAME }},push-by-digest=true,name-canonical=true,push=true
+
+      - name: Export digest
+        run: |
+          mkdir -p ${{ runner.temp }}/digests
+          digest="${{ steps.build.outputs.digest }}"
+          touch "${{ runner.temp }}/digests/${digest#sha256:}"
+
+      - name: Upload digest
+        uses: actions/upload-artifact@v4
+        with:
+          name: digests-${{ env.PLATFORM_PAIR }}
+          path: ${{ runner.temp }}/digests/*
+          if-no-files-found: error
+          retention-days: 1
+
+  merge:
+    runs-on: ubuntu-latest
+    needs:
+      - build
+    steps:
+      - name: Set repository and image name to lowercase
+        run: |
+          echo "IMAGE_NAME=${IMAGE_NAME,,}" >>${GITHUB_ENV}
+          echo "FULL_IMAGE_NAME=ghcr.io/${IMAGE_NAME,,}" >>${GITHUB_ENV}
+        env:
+          IMAGE_NAME: '${{ github.repository }}'
+
+      - name: Download digests
+        uses: actions/download-artifact@v4
+        with:
+          path: ${{ runner.temp }}/digests
+          pattern: digests-*
+          merge-multiple: true
+
+      - name: Log in to the Container registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Create manifest list and push
+        working-directory: ${{ runner.temp }}/digests
+        env:
+          GIT_REF: ${{ github.head_ref || github.ref_name }}
+        run: |
+          SANITIZED_REF=$(echo "$GIT_REF" | sed 's/\//-/g')
+          if [ "${{ github.ref_name }}" = "master" ]; then
+            TAG="${FULL_IMAGE_NAME}:latest-couchers"
+          else
+            TAG="${FULL_IMAGE_NAME}:${SANITIZED_REF}-couchers"
+          fi
+
+          docker buildx imagetools create -t $TAG \
+            $(printf '${{ env.FULL_IMAGE_NAME }}@sha256:%s ' *)
+
+      - name: Inspect image
+        env:
+          GIT_REF: ${{ github.head_ref || github.ref_name }}
+        run: |
+          SANITIZED_REF=$(echo "$GIT_REF" | sed 's/\//-/g')
+          if [ "${{ github.ref_name }}" = "master" ]; then
+            TAG="${FULL_IMAGE_NAME}:latest-couchers"
+          else
+            TAG="${FULL_IMAGE_NAME}:${SANITIZED_REF}-couchers"
+          fi
+
+          docker buildx imagetools inspect $TAG
