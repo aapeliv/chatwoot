@@ -20,8 +20,6 @@ jobs:
           - platform: linux/arm64
             runner: ubuntu-22.04-arm
     runs-on: ${{ matrix.runner }}
-    env:
-      GIT_REF: ${{ github.head_ref || github.ref_name }}
     steps:
       - name: Set repository and image name to lowercase
         run: |
@@ -49,8 +47,7 @@ jobs:
 
       - name: Set Docker Tags
         run: |
-          SANITIZED_REF=$(echo "$GIT_REF" | sed 's/\//-/g')
-          echo "DOCKER_TAG=${FULL_IMAGE_NAME}:${SANITIZED_REF}-couchers" >> $GITHUB_ENV
+          echo "DOCKER_TAG=${FULL_IMAGE_NAME}:couchers-${{ github.sha }}" >> $GITHUB_ENV
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
@@ -123,8 +120,7 @@ jobs:
         env:
           GIT_REF: ${{ github.head_ref || github.ref_name }}
         run: |
-          SANITIZED_REF=$(echo "$GIT_REF" | sed 's/\//-/g')
-          TAG="${FULL_IMAGE_NAME}:${SANITIZED_REF}-couchers"
+          TAG="${FULL_IMAGE_NAME}:couchers-${{ github.sha }}"
 
           docker buildx imagetools create -t $TAG \
             $(printf '${{ env.FULL_IMAGE_NAME }}@sha256:%s ' *)
@@ -133,7 +129,6 @@ jobs:
         env:
           GIT_REF: ${{ github.head_ref || github.ref_name }}
         run: |
-          SANITIZED_REF=$(echo "$GIT_REF" | sed 's/\//-/g')
-          TAG="${FULL_IMAGE_NAME}:${SANITIZED_REF}-couchers"
+          TAG="${FULL_IMAGE_NAME}:couchers-${{ github.sha }}"
 
           docker buildx imagetools inspect $TAG
